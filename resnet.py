@@ -7,6 +7,8 @@ except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
 from typing import Type, Any, Callable, Union, List, Optional
 
+from modules import LocalTextureSelfAttention, PeriodicityAwareModule
+
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -412,6 +414,12 @@ class BN_layer(nn.Module):
         self.conv4 = conv1x1(1024 * block.expansion, 512 * block.expansion, 1)
         self.bn4 = norm_layer(512 * block.expansion)
 
+        # Texture-aware guidance modules
+        self.pam1 = PeriodicityAwareModule(64 * block.expansion)
+        self.pam2 = PeriodicityAwareModule(128 * block.expansion)
+        self.pam3 = PeriodicityAwareModule(256 * block.expansion)
+        self.texture_context = LocalTextureSelfAttention(256 * block.expansion * 3)
+
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -448,9 +456,14 @@ class BN_layer(nn.Module):
     def _forward_impl(self, x: Tensor) -> Tensor:
         # See note [TorchScript super()]
         #x = self.cbam(x)
-        l1 = self.relu(self.bn2(self.conv2(self.relu(self.bn1(self.conv1(x[0]))))))
-        l2 = self.relu(self.bn3(self.conv3(x[1])))
-        feature = torch.cat([l1,l2,x[2]],1)
+        x0 = self.pam1(x[0])
+        x1 = self.pam2(x[1])
+        x2 = self.pam3(x[2])
+
+        l1 = self.relu(self.bn2(self.conv2(self.relu(self.bn1(self.conv1(x0))))))
+        l2 = self.relu(self.bn3(self.conv3(x1)))
+        feature = torch.cat([l1, l2, x2], 1)
+        feature = self.texture_context(feature)
         output = self.bn_layer(feature)
         #x = self.avgpool(feature_d)
         #x = torch.flatten(x, 1)
