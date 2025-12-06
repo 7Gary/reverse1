@@ -60,6 +60,39 @@ def cvt2heatmap(gray):
     heatmap = cv2.applyColorMap(np.uint8(gray), cv2.COLORMAP_JET)
     return heatmap
 
+def _select_threshold(gt, scores):
+    """
+    依据 Youden 指数 (TPR - FPR) 选择样本级阈值，并返回 (阈值, FPR, FNR)。
+    若类别过于单一（全正常或全异常），返回默认阈值与 0 率，避免除零错误。
+    """
+
+    gt = np.asarray(gt)
+    scores = np.asarray(scores)
+    if gt.min() == gt.max():
+        return scores.max(), 0.0, 0.0
+
+    # 取唯一分数作为候选阈值，按升序遍历
+    thresholds = np.unique(scores)
+    best_j, best_thr, best_fpr, best_fnr = -1, thresholds[0], 1.0, 1.0
+
+    for thr in thresholds:
+        preds = scores >= thr
+        tp = np.logical_and(preds == 1, gt == 1).sum()
+        fp = np.logical_and(preds == 1, gt == 0).sum()
+        tn = np.logical_and(preds == 0, gt == 0).sum()
+        fn = np.logical_and(preds == 0, gt == 1).sum()
+
+        tpr = tp / (tp + fn + 1e-8)
+        fpr = fp / (fp + tn + 1e-8)
+        j_score = tpr - fpr
+        if j_score > best_j:
+            best_j = j_score
+            best_thr = thr
+            best_fpr = fpr
+            best_fnr = 1 - tpr
+
+    return best_thr, best_fpr, best_fnr
+
 # 修复：图像级评估（仅 sample AUROC，无像素级因为无 GT 掩码）
 # 移除 gt_list_px, pr_list_px, aupro_list 和 compute_pro 调用
 # gt_list_sp 使用 label (0/1)，而非 np.max(gt)（因为 gt 全 0）
@@ -84,7 +117,10 @@ def evaluation(encoder, bn, decoder, dataloader, device, _class_=None):
     auroc_px = 0.0  # 占位，无像素 GT
     auroc_sp = round(roc_auc_score(gt_list_sp, pr_list_sp), 3)
     aupro_px = 0.0  # 占位，无像素 GT
-    return auroc_px, auroc_sp, aupro_px
+    # 计算过杀率（FPR）与漏检率（FNR）
+    _, overkill_rate, miss_rate = _select_threshold(gt_list_sp, pr_list_sp)
+
+    return auroc_px, auroc_sp, aupro_px, overkill_rate, miss_rate
 
 def test(_class_):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -106,8 +142,9 @@ def test(_class_):
             ckp['bn'].pop(k)
     decoder.load_state_dict(ckp['decoder'])
     bn.load_state_dict(ckp['bn'])
-    auroc_px, auroc_sp, aupro_px = evaluation(encoder, bn, decoder, test_dataloader, device, _class_)
+    auroc_px, auroc_sp, aupro_px, overkill_rate, miss_rate = evaluation(encoder, bn, decoder, test_dataloader, device, _class_)
     print(_class_, ':', auroc_px, ',', auroc_sp, ',', aupro_px)
+    print(f"Overkill Rate (FPR): {overkill_rate:.4f}  |  Miss Rate (FNR): {miss_rate:.4f}")
     return auroc_px
 
 import os
