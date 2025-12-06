@@ -64,9 +64,9 @@ def loss_concat(a, b):
 
 def train(_class_):
     print(_class_)
-    epochs = 40
-    learning_rate = 0.001
-    batch_size = 16
+    epochs = 100
+    learning_rate = 0.005
+    batch_size = 32
     image_size = 256
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -103,9 +103,10 @@ def train(_class_):
             loss_list.append(loss.item())
         print('epoch [{}/{}], loss:{:.4f}'.format(epoch + 1, epochs, np.mean(loss_list)))
         if (epoch + 1) % 10 == 0:
-            # 修复：图像级评估，返回 (px, sp_max, sp_mean, pro)
-            auroc_px, auroc_sp, aupro_px = evaluation(encoder, bn, decoder, test_dataloader, device)
+            # 修复：图像级评估，返回 (px, sp_max, sp_mean, pro, fpr, fnr)
+            auroc_px, auroc_sp, aupro_px, overkill_rate, miss_rate = evaluation(encoder, bn, decoder, test_dataloader, device)
             print(f"Sample AUROC: {auroc_sp:.3f} (Pixel: N/A, AUPRO: N/A)")
+            print(f"Overkill Rate (FPR): {overkill_rate:.4f}  |  Miss Rate (FNR): {miss_rate:.4f}")
             torch.save({'bn': bn.state_dict(),
                         'decoder': decoder.state_dict()}, ckp_path)
     return auroc_sp
