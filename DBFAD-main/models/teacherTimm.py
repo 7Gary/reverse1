@@ -6,9 +6,9 @@ import os
 class teacherTimm(nn.Module):
     def __init__(
         self,
-        backbone_name="wide_resnet50_2",
+        backbone_name="resnet34",
         out_indices=[0, 1, 2, 3],
-        weight_path="/data/c425/cx/DBFAD/wide_resnet50_2-9ba9bcbe.pth"
+        weight_path="/data/c425/cx/DBFAD/resnet34-b627a593.pth"
     ):
         super(teacherTimm, self).__init__()
 
@@ -19,15 +19,6 @@ class teacherTimm(nn.Module):
             features_only=True,
             out_indices=out_indices
         )
-
-        self.target_channels = [64, 64, 128, 256]
-        feature_channels = self.feature_extractor.feature_info.channels()
-        self.adapters = nn.ModuleList()
-        for idx, in_channels in enumerate(feature_channels):
-            if idx < len(self.target_channels) and in_channels != self.target_channels[idx]:
-                self.adapters.append(nn.Conv2d(in_channels, self.target_channels[idx], kernel_size=1, bias=False))
-            else:
-                self.adapters.append(nn.Identity())
 
         # 2. 加载本地 ImageNet 预训练权重
         if weight_path is not None:
@@ -55,7 +46,5 @@ class teacherTimm(nn.Module):
 
     def forward(self, x):
         features_t = self.feature_extractor(x)
-        for idx, adapter in enumerate(self.adapters):
-            features_t[idx] = adapter(features_t[idx])
         features_t[0] = self.pool(features_t[0])
         return features_t
