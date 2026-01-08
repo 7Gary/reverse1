@@ -19,7 +19,7 @@ class KD_ReverseResidual():
         self.img_cropsize = 256
         self.validation_ratio = 0.3
         self.num_epochs = 500
-        self.lr = 0.005
+        self.lr = 0.002
         self.batch_size = 4
         self.patienceES=10
         self.vis = vis
@@ -50,7 +50,7 @@ class KD_ReverseResidual():
 
     def load_model(self):
 
-        self.model_t=teacherTimm(backbone_name="wide_resnet50_2",out_indices=[0,1,2,3]).to(self.device)
+        self.model_t=teacherTimm(backbone_name="resnet34",out_indices=[0,1,2,3]).to(self.device)
         self.model_s= reverse_student18(DG=self.DG).to(self.device)
 
 
